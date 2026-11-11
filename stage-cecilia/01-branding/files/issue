@@ -1,0 +1,14 @@
+
+             \e{lightgray}▄\e{reset}
+           \e{lightgray}▄ █ ▄\e{reset}
+         \e{lightgray}▄ █ █ █ ▄\e{reset}       \e{bold}Cecilia\e{reset}
+         \e{lightgray}█ █ █ █ █\e{reset}       organ recorder and player
+         \e{darkgray}▀▀▀▀▀▀▀▀▀\e{reset}
+
+   Open Cecilia on a phone, tablet or computer on the same network:
+
+       \e{bold}http://\n.local:7070\e{reset}
+       http://\4:7070
+
+   There's no need to sign in here; this screen is for maintenance.
+

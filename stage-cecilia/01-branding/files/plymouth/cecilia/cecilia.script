@@ -1,0 +1,72 @@
+// Cecilia's start-up screen. The mark's five pipes light up, left to right,
+// as the Pi starts; the wordmark sits beneath; a quiet line at the bottom
+// says what's happening. Artwork is drawn for 1920x1080 and scaled to fit.
+
+Window.SetBackgroundTopColor(0.059, 0.067, 0.090);
+Window.SetBackgroundBottomColor(0.059, 0.067, 0.090);
+
+sw = Window.GetWidth();
+sh = Window.GetHeight();
+scale = Math.Min(sw / 1920, sh / 1080);
+
+fun scaled(name) {
+    img = Image(name);
+    return img.Scale(Math.Int(img.GetWidth() * scale), Math.Int(img.GetHeight() * scale));
+}
+
+background = Sprite(Image("background.png").Scale(sw, sh));
+background.SetZ(-100);
+
+for (i = 0; i <= 5; i++)
+    frames[i] = scaled("pipes-" + i + ".png");
+
+pipes = Sprite(frames[0]);
+pipes.SetX(Math.Int(sw / 2 - frames[0].GetWidth() / 2));
+pipes.SetY(Math.Int(sh * 0.44 - frames[0].GetHeight() / 2 - 40 * scale));
+
+word = scaled("wordmark.png");
+wordmark = Sprite(word);
+wordmark.SetX(Math.Int(sw / 2 - word.GetWidth() / 2));
+wordmark.SetY(Math.Int(pipes.GetY() + frames[0].GetHeight() + 24 * scale));
+
+// What's happening, at the bottom.
+mode = Plymouth.GetMode();
+if (mode == "shutdown")
+    status = "Shutting down…";
+else if (mode == "reboot")
+    status = "Restarting…";
+else if (mode == "updates" || mode == "system-upgrade")
+    status = "Installing updates…";
+else
+    status = "Starting…";
+
+message = Sprite();
+fun show_message(text) {
+    img = Image.Text(text, 0.545, 0.576, 0.651, 1, "Sans " + Math.Int(Math.Max(12, 22 * scale)));
+    message.SetImage(img);
+    message.SetX(Math.Int(sw / 2 - img.GetWidth() / 2));
+    message.SetY(Math.Int(sh * 0.92 - img.GetHeight()));
+}
+show_message(status);
+
+// One more pipe lit for each fifth of the way.
+lit = 0;
+fun progress_callback(duration, progress) {
+    n = Math.Int(progress * 5 + 0.25);
+    if (n > 5) n = 5;
+    if (mode == "shutdown" || mode == "reboot") n = 5;
+    if (n != lit) {
+        lit = n;
+        pipes.SetImage(frames[lit]);
+    }
+}
+Plymouth.SetBootProgressFunction(progress_callback);
+
+// Messages from the system (for example a disk check) replace the status.
+Plymouth.SetMessageFunction(show_message);
+
+// When starting is done, the whole mark is lit.
+fun quit_callback() {
+    pipes.SetImage(frames[5]);
+}
+Plymouth.SetQuitFunction(quit_callback);

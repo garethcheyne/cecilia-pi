@@ -1,0 +1,130 @@
+name: Build the Cecilia SD card image
+
+# Builds Raspberry Pi OS Lite (64-bit) with Cecilia and its branding, attaches
+# the image to a release here, and publishes the list Raspberry Pi Imager reads
+# (https://garethcheyne.github.io/cecilia-pi/os_list.json).
+#
+# Runs when started by hand, and every day: it builds only when Cecilia has a
+# release newer than the last image.
+on:
+  workflow_dispatch:
+    inputs:
+      cecilia_version:
+        description: "Cecilia version to put on the image (blank = the latest release)"
+        required: false
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency: { group: image, cancel-in-progress: false }
+
+jobs:
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      build: ${{ steps.v.outputs.build }}
+    steps:
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANTED: ${{ inputs.cecilia_version }}
+        run: |
+          VERSION="${WANTED:-$(gh release view --repo garethcheyne/cecilia --json tagName -q .tagName | sed 's/^v//')}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ -n "$WANTED" ] || ! gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Image for Cecilia $VERSION already built."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  image:
+    needs: decide
+    if: needs.decide.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.decide.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get Cecilia (64-bit Pi package) and check it
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          gh release download "v$VERSION" --repo garethcheyne/cecilia --pattern '*_arm64.deb' --pattern '*_arm64.deb.sha256' --dir debs
+          cd debs
+          sha256sum -c ./*.sha256
+          cp ./*_arm64.deb ../stage-cecilia/00-cecilia/files/cecilia.deb
+
+      - uses: usimd/pi-gen-action@v1
+        id: build
+        with:
+          image-name: cecilia-pi-arm64
+          pi-gen-version: arm64
+          release: bookworm
+          stage-list: stage0 stage1 stage2 ./stage-cecilia
+          hostname: cecilia
+          username: organist
+          password: cecilia
+          # SSH stays off unless it's switched on in Raspberry Pi Imager.
+          enable-ssh: 0
+          locale: en_GB.UTF-8
+          compression: xz
+          export-last-stage-only: true
+
+      - name: Sizes and checksums for Raspberry Pi Imager
+        id: sums
+        run: |
+          IMG="${{ steps.build.outputs.image-path }}"
+          FINAL="cecilia-pi-$VERSION-arm64.img.xz"
+          cp "$IMG" "$FINAL"
+          sha256sum "$FINAL" > "$FINAL.sha256"
+          {
+            echo "file=$FINAL"
+            echo "download_size=$(stat -c%s "$FINAL")"
+            echo "download_sha256=$(sha256sum "$FINAL" | cut -d' ' -f1)"
+            echo "extract_size=$(xz -dc "$FINAL" | wc -c)"
+            echo "extract_sha256=$(xz -dc "$FINAL" | sha256sum | cut -d' ' -f1)"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Cecilia ${{ env.VERSION }} for Raspberry Pi
+          body: |
+            Raspberry Pi OS Lite (64-bit) with Cecilia ${{ env.VERSION }}.
+            Write it with Raspberry Pi Imager: see the README for adding Cecilia to Imager's list.
+          files: |
+            ${{ steps.sums.outputs.file }}
+            ${{ steps.sums.outputs.file }}.sha256
+
+      - name: The list Raspberry Pi Imager reads
+        run: |
+          mkdir -p site
+          cp imager/icon.png site/icon.png
+          URL="https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/${{ steps.sums.outputs.file }}"
+          jq -n \
+            --arg version "$VERSION" \
+            --arg url "$URL" \
+            --arg icon "https://garethcheyne.github.io/cecilia-pi/icon.png" \
+            --arg date "$(date -u +%Y-%m-%d)" \
+            --argjson dsize "${{ steps.sums.outputs.download_size }}" \
+            --arg dsha "${{ steps.sums.outputs.download_sha256 }}" \
+            --argjson esize "${{ steps.sums.outputs.extract_size }}" \
+            --arg esha "${{ steps.sums.outputs.extract_sha256 }}" \
+            -f imager/os_list.jq > site/os_list.json
+          cat site/os_list.json
+
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+
+  publish:
+    needs: image
+    runs-on: ubuntu-latest
+    environment: { name: github-pages }
+    steps:
+      - uses: actions/deploy-pages@v4

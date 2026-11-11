@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Cecilia
+Description=Cecilia's start-up screen: five organ pipes light up as the Pi starts.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/cecilia
+ScriptFile=/usr/share/plymouth/themes/cecilia/cecilia.script
