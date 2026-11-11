@@ -69,7 +69,9 @@ jobs:
           stage-list: stage0 stage1 stage2 ./stage-cecilia
           hostname: cecilia
           username: organist
-          password: cecilia
+          # No default password: the account stays locked until Raspberry Pi
+          # Imager's settings (or the first-boot setup) give it one.
+          password: ""
           # SSH stays off unless it's switched on in Raspberry Pi Imager.
           enable-ssh: 0
           locale: en_GB.UTF-8
